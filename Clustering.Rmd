@@ -1,0 +1,690 @@
+---
+title: "COMP 6115 - Assignment 1"
+author: "Denecian Dennis - 620062729"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+# Introduction
+
+We are given a data set containing sales data. We asked to clean the data, generate and review some cluster analyses. The fist step we want to do is import the necessary libraries and the data set we will be working with.
+
+```{r}
+suppressPackageStartupMessages(library("gdata"))
+suppressPackageStartupMessages(library(dendextend))
+library(factoextra)
+library(NbClust)
+ 
+```
+
+# Importing the Data Set
+
+Here we import the data set SalesData that was provided.
+
+```{r}
+SalesData<-read.csv('SalesData.csv', header = TRUE)
+```
+
+
+# Data Exploration I
+
+Let us get an idea of the data by looking at the structure of the data
+
+```{r}
+str(SalesData)
+```
+
+We notice a few things from the structure of the data. 
+\begin{enumerate}
+  \item Within the the data set there are 9 attributes and 10,113 rows of data. 
+  \item The attribute ItemType has data points that are blank spaces
+  \item The attributes Order.Date and Ship Date are of type character and we would expect them both to be dates.
+\end{enumerate}
+
+Let us examine a little further by looking at the the summary of each data attributes.
+
+
+### Region
+
+```{r}
+unique(SalesData$Region)
+```
+
+Here we notice 7 distinct regions. We also notice data points that have some characters such as '??', ' ', '??' etc that we will later replace with N/A since these appear to be typographical errors or invalid entries in the attribute.
+
+
+### ItemType
+
+```{r}
+unique(SalesData$ItemType)
+```
+ 
+For the ItemType attribute, we notice that there exist blank spaces in some of the data points and a categories that is labeled `None`. These will also be handle later.
+
+
+### Sales.Channel
+
+```{r}
+unique(SalesData$Sales.Channel)
+```
+Again, here we notice blank spaces within the attribute and also a data point 'YES' that appears doesn't appear to be a valid response in this field. Let us look at it closer
+
+```{r}
+nrow(SalesData[SalesData$Sales.Channel=='YES',])
+```
+
+With `r nrow(SalesData[SalesData$Sales.Channel=='YES',])` entries with 'YES' representing `r round(269/10113*100,digits=2)`% of the data set, we can safely replace these entire with N/A as well.
+
+
+# Importing the Data Set II
+
+Given that we know from above that there are some invalid data points, let us import the data set again with some constraints to insert N/A into data points where there exist known invalid entries.
+
+```{r}
+SalesData<-read.csv('SalesData.csv', na.strings = c("","",
+"??","???","?","\"\"","YES"), stringsAsFactors = TRUE)
+```
+
+
+# Data Exploration II
+
+Looking at the data structure again we have:
+
+```{r}
+str(SalesData)
+```
+
+Here we see that most attributes have been converted to factors excluding OrderID, Units.Sold and Unit.Price which are int, int and num respectively. 
+
+### ItemType Missing Values
+
+First we observe the summary of the data before we delete the row to ensure it was done properly
+
+```{r}
+summary(SalesData$ItemType)
+```
+
+Now we delete the two rows with the missing data.
+
+```{r}
+SalesData <- SalesData[!is.na(SalesData$ItemType),]
+summary(SalesData$ItemType)
+```
+
+### Item Type
+
+Lets take a deeper look into the category labeled `None
+
+```{r}
+unique(SalesData$ItemType)
+unique(SalesData$Unit.Price)
+```
+
+We see here that there exist 13 `ItemType` including the category that is labeled `None` and 12 categories in the `Unit Price`. This implies that each item type has a set price and we can fill in the entries that are `None` using this information.
+
+
+```{r}
+lst <- as.list(levels(SalesData$ItemType))
+
+for (i in 1:length(lst)){
+  print(paste('The unit price for',lst[i], 'is',
+              mean(SalesData[SalesData$ItemType==lst[i],]$Unit.Price,
+                   na.rm = TRUE)))
+}
+```
+
+With the now known unit price for each Item type was can use this information to fill in the missing item type under the category of `None`.
+
+```{r}
+SalesData[c(SalesData$Unit.Price==255.28 & SalesData$ItemType=='None'),]$ItemType <- 'Baby Food'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==47.45 & SalesData$ItemType=='None'),]$ItemType <- 'Beverages'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==205.7 & SalesData$ItemType=='None'),]$ItemType <- 'Cereal'
+```
+
+
+```{r}
+SalesData[c(SalesData$Unit.Price==109.28 & SalesData$ItemType=='None'),]$ItemType <- 'Clothes'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==437.20 & SalesData$ItemType=='None'),]$ItemType <- 'Cosmetics'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==9.33 & SalesData$ItemType=='None'),]$ItemType <- 'Fruits'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==668.27 & SalesData$ItemType=='None'),]$ItemType <- 'Household'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==421.89 & SalesData$ItemType=='None'),]$ItemType <- 'Meat'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==651.21 & SalesData$ItemType=='None'),]$ItemType <- 'Office Supplies'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==81.73 & SalesData$ItemType=='None'),]$ItemType <- 'Personal Care'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==152.58 & SalesData$ItemType=='None'),]$ItemType <- 'Snacks'
+```
+
+```{r}
+SalesData[c(SalesData$Unit.Price==154.06 & SalesData$ItemType=='None'),]$ItemType <- 'Vegetables'
+```
+
+```{r}
+SalesData$ItemType <- droplevels(SalesData$ItemType)
+levels(SalesData$ItemType)
+```
+
+You can see from above that we have reclassified the data in `None` and removed the N/A's that was present in the data.
+
+
+### Order Priority
+
+```{r}
+str(SalesData$Order.Priority)
+summary(SalesData$Order.Priority)
+```
+
+Here we see that the exist four levels: C-Critical, H-High, L-Low and M-Medium. We also note that these levels are not ordered. Let us go ahead and do this.
+
+
+```{r}
+SalesData$Order.Priority <- ordered(SalesData$Order.Priority, levels = c('C','H','M','L'))
+is.ordered(SalesData$Order.Priority)
+levels(SalesData$Order.Priority)
+```
+
+We see here that the levels have been ordered and is now in the order C>H>M>L.
+
+
+### Order Date
+
+Let us have a look at the data to get the format to convert it to native R dates.
+
+```{r}
+head(SalesData$Order.Date, 5)
+```
+
+Here we can infer that the format is month-day-year from dates such as 2/20/2013 etc.
+
+```{r}
+SalesData$Order.Date <- as.Date(SalesData$Order.Date, format = "%m/%d/%Y")
+str(SalesData$Order.Date)
+```
+
+We can see that the Order data has successfully been transformed to a date format.
+
+
+### Order.ID
+
+We want to check on the uniqueness of the order ID
+
+```{r}
+if (length(unique(SalesData$Order.ID)) == length(SalesData$Order.ID)){
+  print ('Order ID is unique')
+}else{
+  print ('Order ID id not uqique')
+}
+
+```
+Since the order ID is unique, it will not provide any useful insights and we will thus remove it from the data set.
+
+```{r}
+SalesData$Order.ID<-NULL
+colnames(SalesData)
+```
+
+We can see that Order.ID has been removed from the data set.
+
+
+### Ship Date
+
+```{r}
+head(SalesData$Ship.Date)
+```
+
+Looking at the date, we can infer that the format is month-day-year from dates such as 2/28/2013 etc.
+
+```{r}
+SalesData$Ship.Date <- as.Date(SalesData$Ship.Date, format = "%m/%d/%Y")
+str(SalesData$Ship.Date)
+```
+
+We can see that the ship data attribute has successfully been transformed to a date format.
+
+
+### Units Sold
+
+```{r}
+str(SalesData$Units.Sold)
+summary(SalesData$Units.Sold)
+```
+
+Here we see the data type as int, which is appropriate for the field type. We can also note that the distribution for Units sold appears to be fairly uniformed based on the summary statistics. Let us do a plot to graphically see the representation of the data set.
+
+```{r}
+plot(density(SalesData$Units.Sold))
+```
+
+From the graphical representation, there also appears to be no outliers within this attribute.
+
+
+### Unit Price
+
+```{r}
+str(SalesData$Unit.Price)
+summary(SalesData$Unit.Price)
+```
+
+We see here the data type is num, which is appropriate for the attribute and that there are no unit prince below 0.
+
+
+# Cleaning Missing Values
+
+So far we have applied some cleaning techniques to the data. Let's now take a look at the N/A's.
+
+```{r}
+apply(SalesData,2,function(k) sum(is.na(k))) 
+```
+
+See the table below to note the action that will be taken to resolve the N/A in the three attributes: Region, ItemType and Sale.Channel.
+
+|Attribute|Action|
+|:--------|:-----|
+|Region|All 1426 N/A's will be replaced with 'Unknown'|
+|Sales.Channel| All 354 N/A's will be replaced with 'Unknown'|
+
+### Region Missing Values
+
+```{r}
+levels(SalesData$Region)
+```
+
+```{r}
+levels(SalesData$Region)<-c(levels(SalesData$Region), "Unknown")
+SalesData$Region[is.na(SalesData$Region)]<-"Unknown"
+summary(SalesData$Region)
+```
+
+We see here that all 1426 missing values have now been assign the level unknown.
+
+
+### Sales.Channel Missing Values
+
+Here we observe the levels that exists in Sale.Channel.
+
+```{r}
+levels(SalesData$Sales.Channel)
+```
+We know there exist 354 missing values in Sales Channel. To change their values to 'Unknown' we do the following.
+
+```{r}
+levels(SalesData$Sales.Channel)<-c(levels(SalesData$Sales.Channel), "Unknown")
+SalesData$Sales.Channel[is.na(SalesData$Sales.Channel)]<-"Unknown"
+summary(SalesData$Sales.Channel)
+```
+
+Here we see that the 354 missing values has been changed to unknown. 
+
+Before we move on let us check the consistency of the missing values in the data set.
+
+```{r}
+apply(SalesData,2,function(k) sum(is.na(k))) 
+```
+
+
+# Outliers
+
+We know that there exist no outlier in all attributes except Unit.Price. Let us check this now.
+
+```{r}
+RBound<-SalesData[SalesData$Unit.Price>(mean(SalesData$Unit.Price)+
+(2*sd(SalesData$Unit.Price))),"Unit.Price"]
+LBound<-SalesData[SalesData$Unit.Price<(mean(SalesData$Unit.Price) -
+(2*sd(SalesData$Unit.Price))),"Unit.Price"]
+
+RBound
+LBound
+```
+
+Here we see that there are no data points that are two standard deviations to the left and right of the mean; hence there are no outliers.
+
+# Transformation
+
+### Adding New Attributes - Wait Time
+
+We are asked to create a new attribute that will tell the number of days between ship date and the order date. Here we will call is `Wait.Time`.
+
+First we want to have this field calculated, see below.
+
+```{r}
+date.diff<- difftime(SalesData$Ship.Date, SalesData$Order.Date, units = c("days"))
+head(date.diff,15)
+```
+
+Let us append it to the data set
+
+```{r}
+SalesData$Wait.Time <- date.diff
+head(SalesData[,c('Ship.Date', 'Order.Date', 'Wait.Time')])
+```
+
+Here we can see the the field had been correctly calculated and appended.
+
+### Adding New Attributes - Total Cost
+
+We will also a the attribute Total Cost the will use the data in Unit Price and Units Sold. When that attribute is successfully created, the depended attributes can be remove.
+
+```{r}
+SalesData$Total.Cost <- SalesData$Units.Sold * SalesData$Unit.Price
+head(SalesData[,c('Unit.Price','Units.Sold','Total.Cost')])
+```
+ 
+We can note that the new attribute was successfully created. We now remove the unwanted dependent attributes.
+ 
+```{r}
+SalesData$Unit.Price <- NULL
+SalesData$Units.Sold <- NULL
+```
+ 
+
+### Convert Factors to Numerical Representation
+
+Here we will convert the factors: `Region`, `Itemtype`, `Sales Channel`, and `Order Priority` to numeric representation.
+
+```{r}
+SalesData$Region <- as.numeric(SalesData$Region)
+SalesData$Sales.Channel <- as.numeric(SalesData$Sales.Channel)
+SalesData$Order.Priority <- as.numeric(SalesData$Order.Priority)
+SalesData$ItemType <- as.numeric(SalesData$ItemType)
+
+head(SalesData[,c('Region','ItemType','Sales.Channel','Order.Priority')])
+```
+
+Here we can see that the specified columns was transformed to numeric representations.
+
+
+# Normalization and Binnings
+
+See the table below to reference the techniques to be employed on the data set.
+
+|Attribute|Data Preparation Technique|
+|:--------|:--------------------|
+|Total Cost|Min-Max Normalization|
+|Wait Time|Binning|
+
+
+### Total Cost
+
+```{r}
+summary(SalesData$Total.Cost)
+
+```
+
+Given that the values for total cost is large, we will use the min-max normalization technique on the attribute.
+
+```{r}
+TC <-  ((SalesData[,'Total.Cost']-min(SalesData$Total.Cost))/
+          (max(SalesData$Total.Cost)-min(SalesData$Total.Cost)))*(12-1)+1
+summary(TC)
+```
+
+```{r}
+SalesData$Total.Cost <- TC
+
+```
+
+We see from above that the attribute was successfully normalized using the Decimal SCaling method.
+
+
+### Wait Time
+
+The transformation key below tells how the attribute will be binned, the label that will be attached and description of the data in that bin
+
+|Wait Time Range|Details|Bin Label|
+|:--------------|:------|:--------|
+|0 - 10 days |On Time|1|
+|11 - 20 days |Delayed|2|
+|>20 days |Late|3|
+
+```{r}
+summary(SalesData$Wait.Time)
+SalesData$Wait.Time<-as.numeric(SalesData$Wait.Time)
+WT <- cut(SalesData$Wait.Time, c(-1,10,20,100), right = TRUE, labels = c('One Time','Delayed','Late'))
+
+SalesData$Wait.Cat <- WT
+head(SalesData[,c('Wait.Time', 'Wait.Cat')],10)
+```
+
+Here we see that the transformation appropriately describes the data. Let us now convert these labels to numeric representation and remove the `Wait.Time`, 'Order.Date' and 'Ship.Date' attributes.
+
+```{r}
+SalesData$Wait.Cat <- as.numeric(SalesData$Wait.Cat)
+SalesData$Wait.Time <- NULL
+SalesData$Order.Date <- NULL
+SalesData$Ship.Date <- NULL
+```
+
+Before we move on the the cluster analysis, let us write our clean data to a csv file for ease of use.
+
+
+```{r}
+write.csv(SalesData, file='Clean_Sales_Data.csv', row.names = FALSE)
+```
+
+# Cluster Analysis
+
+We will employ cluster analysis to group the data that are similar to one another within the same cluster and are dissimilar to the objects in other clusters. The K-Means and the Hierarchical Cluster analysis will be used with 4,6 and 8 clusters.
+
+
+## Agglomorative Cluster Analysis
+
+```{r}
+dis.matrix <- dist(SalesData)
+H.Cluster<-hclust(dis.matrix, method = 'average')
+plot(H.Cluster, hang = -1)
+```
+Just by looking at the clusters above, we can see three cluster that seem to be grouped together. One to the left, another in the middle and the last one on the right.
+
+```{r}
+HC.4 <- cutree(H.Cluster,4)
+HC.6 <- cutree(H.Cluster,6)
+HC.8 <- cutree(H.Cluster,8)
+df <- data.frame(HC.4, HC.6, HC.8)
+tail(df,10)
+```
+
+By observing the assigned cluster we can some consistency in the clustering, however, no strong inferences can be made by the data displayed above.
+
+### 4 Cluster Analysis
+
+```{r}
+par(mfrow=c(1,2))
+
+plot(H.Cluster, hang = -1)
+rect.hclust(H.Cluster, k = 4, border = 2:4)
+abline(h = 5.8, col = 'red')
+
+plot(color_branches(as.dendrogram(H.Cluster), h = 5.8),
+     main = 'Coloured Cluster Dendogram', 
+     sub = '(4 Clusters)',
+     ylab = 'Height')
+abline(h = 5.8, col = 'black')
+
+```
+
+
+```{r}
+aggregate(SalesData, by=list(HC.4), FUN=mean)
+```
+
+
+```{r}
+table(HC.4)
+```
+
+We know that the greater the variability is within the data, the stronger the attribute's influence on clustering. Additionally, From the normalization ranges we can deduce that `Region`, `Item Type` and `Total Cost` would have greater influence as there are more categories to consider. 
+
+For the 4 cluster analysis we can note the following:
+\begin{enumerate}
+  \item `Item Type` had the most influence on the clusters 
+  \item `Wait Time` and `Sales Channel` had almost no influence
+  \item Majority of the data was placed in cluster 1 and 3
+\end{enumerate}
+
+
+### 6 Cluster Analysis
+
+```{r}
+par(mfrow=c(1,2))
+
+plot(H.Cluster, hang = -1)
+rect.hclust(H.Cluster, k = 6, border = 2:4)
+abline(h = 5.4, col = 'red')
+
+plot(color_branches(as.dendrogram(H.Cluster), h = 5.4), 
+     main = 'Coloured Cluster Dendogram', 
+     sub = '(6 Clusters)',
+     ylab = 'Height')
+abline(h = 5.4, col = 'black')
+
+```
+
+```{r}
+aggregate(SalesData, by=list(HC.6), FUN=mean)
+```
+
+```{r}
+table(HC.6)
+```
+
+
+For the 6 cluster analysis we can note the following:
+\begin{enumerate}
+  \item `Total Cost` now has the most influence on the clusters 
+  \item `Wait Time`,`Order Priority` and `Sales Channel` had almost no influence
+  \item Majority of the data is still in cluster 1 and 3
+  \item The number of data points in cluster 2 has not changed. That is, the similarity within this cluster is stronger that that of the others.
+\end{enumerate}
+
+
+### 8 Cluster Analysis
+
+```{r}
+par(mfrow=c(1,2))
+
+plot(H.Cluster, hang = -1)
+rect.hclust(H.Cluster, k = 8, border = 2:4)
+abline(h = 5, col = 'red')
+
+plot(color_branches(as.dendrogram(H.Cluster), h = 5),
+     main = 'Coloured Cluster Dendogram', 
+     sub = '(8 Clusters)',
+     ylab = 'Height')
+abline(h = 5, col = 'black')
+
+```
+
+
+```{r}
+aggregate(SalesData, by=list(HC.8), FUN=mean)
+```
+
+```{r}
+table(HC.8)
+```
+
+For the 8 cluster analysis we can note the following:
+\begin{enumerate}
+  \item `Total Cost` and `Item Type` are both superior influences in forming the 8 clusters
+  \item `Wait Time`, `Order Priority` and `Sales Channel` had almost no influence
+  \item Majority of the data was placed in cluster 4
+  \item The number of data points in cluster 1 and cluster 2 has not changed. That is, the similarity within these cluster is very stronger and the dissimilarity with the other clusters are strong as well.
+  \item We can infer the a 3 or 4 cluster analysis would be a good fit for the data set.
+\end{enumerate}
+
+
+## K-Means Cluster Analysis
+
+```{r}
+KM.4 <- kmeans(SalesData,4)
+KM.6 <- kmeans(SalesData,6)
+KM.8 <- kmeans(SalesData,8)
+```
+
+### 4 Cluster Analysis
+
+```{r}
+plot(SalesData,col=KM.4$cluster)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(Total.Cost ~ Region, SalesData, col=KM.4$cluster)
+plot(ItemType ~ Region, SalesData, col=KM.4$cluster)
+```
+After viewing the visualizing the results we saw some interesting mapping the the data. We see some distinct clusters being formed when looking at `Total Cost` vs `Region` and `Item Type` vs `Region`. Taking a closer look, we can see three distinct clusters and a 4th clusters overlapping into all other 3 clusters.
+
+### 6 Cluster Analysis
+
+```{r}
+plot(SalesData,col=KM.6$cluster)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(Total.Cost ~ Region, SalesData, col=KM.6$cluster)
+plot(ItemType ~ Region, SalesData, col=KM.6$cluster)
+```
+
+Looking at the visualization results from the 6 cluster analysis, we see 1 distinct distinct, coloured black, cluster being formed when looking at `Total Cost` vs `Region`. For the other clusters there, seems to be overlapping. Looking at the pattern, it would appear that the other clusters would be best separated into two clusters. When looking at the`Item Type` vs `Region` we can see 5 distinct clusters and the 6th cluster overlapping into all other 5 clusters.
+
+### 8 Cluster Analysis
+
+```{r}
+plot(SalesData,col=KM.8$cluster)
+```
+
+```{r}
+par(mfrow=c(1,2))
+plot(ItemType ~ Region, SalesData, col=KM.8$cluster)
+plot(ItemType ~ Total.Cost, SalesData, col=KM.8$cluster)
+```
+
+Now looking at the 8 cluster visualization and taking a deeper look into the attributes that seemingly presents patterns, we notice however that there are significant overlapping in some of the clusters. Look at `Item Type` vs `Region` we can see 3 distinct clusters (blue, black and green). For the other 4 clusters, there were significant overlapping where these 4 groups could be viewed as two separate groups.
+
+With the `Total Cost` vs `Item Type` we can see significant overlapping, however some distinct groups can be inferred. Looking at the visualization you can see 4 section that stand out, which would imply that they would provide more insights with a 4 cluster analysis.
+
+
+# Closing Remarks
+
+```{r}
+fviz_nbclust(SalesData, kmeans, method = "wss") +
+  geom_vline(xintercept = 4, linetype = 2) 
+  labs(subtitle = "Elbow method")  
+```
+
+
+K-means clustering define clusters such that the total intra-cluster variation (total within-cluster sum of square) is minimized. The elbow method looks at the percentage of variance explained as a function of the number of clusters. One should choose a number of clusters so that adding another cluster doesn’t give much better modeling of the data. Here the bend occurs at 4 clusters. This method tells us that the most ideal number of clusters is 4.
+
+In closing, in the agglomorative clustering technique we had seen where the ideal number of clusters was inferred to be 3 or 4. We also saw this with the k-means cluster visualization. A confirmation from the elbow method would here assists in choosing 4 clusters over 3 for this data set.
+
+
+
+
